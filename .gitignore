@@ -13,3 +13,4 @@ anonymized*.xlsx
 
 .env*
 .DS_Store
+.vercel
