@@ -1,0 +1,15 @@
+# Abhängigkeiten & Build
+node_modules/
+.next/
+out/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+
+# Echte Schülerdaten / Mappings NIEMALS committen
+*Schulanmeldung*.xlsx
+mapping*.json
+anonymized*.xlsx
+
+.env*
+.DS_Store
