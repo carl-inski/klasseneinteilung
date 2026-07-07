@@ -265,6 +265,15 @@ button.primary:hover:not(:disabled) {
   background: #4a4ac6;
   border-color: #4a4ac6;
 }
+button.primary.lg {
+  padding: 0.6rem 1.4rem;
+  font-size: 1rem;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(91, 91, 214, 0.28);
+}
+button.primary.lg:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(91, 91, 214, 0.36);
+}
 button.ghost {
   background: transparent;
   border-color: transparent;
@@ -612,8 +621,23 @@ table.summary tr.cluster td {
   align-items: center;
   flex-wrap: wrap;
 }
+.ab-status {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
 
 @media (max-width: 640px) {
+  .actionbar {
+    gap: 0.4rem;
+  }
+  .ab-status {
+    width: 100%;
+    order: -1;
+  }
+  .actionbar button.primary.lg {
+    flex: 1;
+  }
+
   body {
     font-size: 14px;
   }

@@ -70,6 +70,37 @@ export default function Home() {
 
   const fileInput = useRef<HTMLInputElement>(null);
 
+  // Robuster POST: liest erst Text, parst dann JSON. So wird ein Timeout/HTML-Fehler
+  // zu einer klaren Meldung statt „The string did not match the expected pattern“.
+  async function postJson<T>(url: string, body: unknown): Promise<T> {
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch {
+      throw new Error("Keine Verbindung zum Server. Bitte erneut versuchen.");
+    }
+    const raw = await res.text();
+    let data: unknown = null;
+    try {
+      data = raw ? JSON.parse(raw) : {};
+    } catch {
+      throw new Error(
+        res.ok
+          ? "Ungültige Serverantwort."
+          : `Serverfehler ${res.status}. Die KI-Funktion hat zu lange gebraucht oder ist fehlgeschlagen — bitte erneut versuchen.`
+      );
+    }
+    if (!res.ok) {
+      const msg = (data as { error?: string })?.error ?? `Serverfehler ${res.status}.`;
+      throw new Error(msg);
+    }
+    return data as T;
+  }
+
   const nameOf = useCallback(
     (code: string): string => {
       if (!showNames) return code;
@@ -139,13 +170,15 @@ export default function Home() {
       const mentionSet = new Set<string>();
       for (const s of students) for (const m of [...s.wishesRaw, ...s.avoidRaw]) mentionSet.add(m);
       const mentions = [...mentionSet];
-      const res = await fetch("/api/ai-names", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: apiKey || undefined, roster, mentions }),
+      if (!mentions.length) {
+        setNameResult({ applied: 0, roster: roster.length });
+        return;
+      }
+      const data = await postJson<{ matches?: NameMatch[] }>("/api/ai-names", {
+        apiKey: apiKey || undefined,
+        roster,
+        mentions,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Unbekannter Fehler");
       const matches: NameMatch[] = data.matches ?? [];
       const codes = new Set(roster.map((r) => r.code));
       const corr: Record<string, string> = { ...corrections };
@@ -230,13 +263,11 @@ export default function Home() {
               `${s.code}: ${balanceH ? s.attrs[balanceH] ?? "?" : ""} ${spreadH ? "Ø" + (s.attrs[spreadH] ?? "?") : ""} Wünsche: ${s.wishes.join("/") || "-"}`
           ),
       ].join("\n");
-      const res = await fetch("/api/ai-decide", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey: apiKey || undefined, cases, context }),
+      const data = await postJson<{ suggestions?: AiSuggestion[] }>("/api/ai-decide", {
+        apiKey: apiKey || undefined,
+        cases,
+        context,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Unbekannter Fehler");
       setAiSuggestions(data.suggestions ?? []);
     } catch (e) {
       setAiError(e instanceof Error ? e.message : "KI-Anfrage fehlgeschlagen.");
@@ -716,14 +747,25 @@ export default function Home() {
 
       {loaded && (
         <div className="actionbar">
-          <button className="primary" onClick={solve} disabled={solving}>
+          <span className="ab-status">
+            {assignment
+              ? assignment.hardViolations.length
+                ? <span className="bad">⚠️ Harte Regeln nicht erfüllbar</span>
+                : <><span className="ok">✓ Eingeteilt</span> · {config!.numClasses} Klassen · {students.length} Schüler</>
+              : <>{students.length} Schüler bereit · {config!.numClasses} Klassen</>}
+          </span>
+          <span style={{ flex: 1 }} />
+          {assignment && (
+            <button onClick={() => { setSeed((s) => s + 13); solve(); }} disabled={solving}>
+              🎲 Alternative
+            </button>
+          )}
+          {assignment && (
+            <button onClick={exportXlsx}>📥 Excel exportieren</button>
+          )}
+          <button className="primary lg" onClick={solve} disabled={solving}>
             {solving ? <><span className="spin" />Berechne …</> : assignment ? "Neu berechnen" : "Einteilung berechnen"}
           </button>
-          {assignment && (
-            <button onClick={() => { setSeed((s) => s + 13); solve(); }}>🎲 Alternative</button>
-          )}
-          <span className="spacer" style={{ flex: 1 }} />
-          {assignment && <button className="primary" onClick={exportXlsx}>📥 Excel exportieren</button>}
         </div>
       )}
     </>
