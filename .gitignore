@@ -14,3 +14,9 @@ anonymized*.xlsx
 .env*
 .DS_Store
 .vercel
+
+# Python
+__pycache__/
+*.pyc
+ke_arbeit/
+ke_fresh/
