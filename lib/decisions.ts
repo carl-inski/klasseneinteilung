@@ -13,9 +13,21 @@ export function findDecisionCases(students: Student[], columns: Column[]): Decis
   for (const s of students) {
     if (s.note) cases.push({ code: s.code, kind: "note", text: s.note });
     for (const w of s.offeneWuensche)
-      cases.push({ code: s.code, kind: "openWish", text: `Wunschpartner „${w}“ konnte keinem Kind zugeordnet werden.` });
+      cases.push({
+        code: s.code,
+        kind: "openWish",
+        text: `Wunschpartner „${w}“ konnte keinem Kind zugeordnet werden.`,
+        mention: w,
+        field: "wish",
+      });
     for (const a of s.offeneAvoid)
-      cases.push({ code: s.code, kind: "openAvoid", text: `„Nicht mit“-Nennung „${a}“ konnte keinem Kind zugeordnet werden.` });
+      cases.push({
+        code: s.code,
+        kind: "openAvoid",
+        text: `„Nicht mit“-Nennung „${a}“ konnte keinem Kind zugeordnet werden.`,
+        mention: a,
+        field: "avoid",
+      });
     const missing: string[] = [];
     if (needsBalance && balanceHeaders.some((h) => s.attrs[h] == null || s.attrs[h] === "")) missing.push("Kategorie");
     if (needsSpread && spreadHeaders.some((h) => typeof s.attrs[h] !== "number")) missing.push("Noten/Zahl");

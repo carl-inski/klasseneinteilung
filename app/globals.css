@@ -550,6 +550,18 @@ table.summary tr.cluster td {
   color: var(--warn);
   font-weight: 600;
 }
+.case-resolve {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+.case-resolve select {
+  font-size: 0.85rem;
+  max-width: 100%;
+}
 .rule {
   font-size: 0.86rem;
   padding: 0.45rem 0.7rem;

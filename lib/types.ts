@@ -96,6 +96,9 @@ export interface DecisionCase {
   code: string;
   kind: "note" | "openWish" | "openAvoid" | "missing";
   text: string;
+  /** Original-Nennung (roh) bei offenen Wünschen/„nicht mit“ — für manuelle Zuordnung. */
+  mention?: string;
+  field?: "wish" | "avoid";
 }
 
 export function classLabel(prefix: string, k: number): string {

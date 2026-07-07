@@ -208,7 +208,9 @@ export function anonymize(
         wishesRaw.push(m);
         const { code: r } = resolve(m, code);
         if (r && r !== code && !wishes.includes(r)) wishes.push(r);
-        else if (!r) offeneWuensche.push(scrubText(m, entries));
+        // Offene Nennung: Original-Text behalten, damit der Nutzer das Kind
+        // manuell zuordnen kann (dafür muss der geschriebene Name sichtbar sein).
+        else if (!r) offeneWuensche.push(m);
       }
     }
     const avoidRaw: string[] = [];
@@ -221,7 +223,7 @@ export function anonymize(
         avoidRaw.push(m);
         const { code: r } = resolve(m, code);
         if (r && r !== code && !avoid.includes(r)) avoid.push(r);
-        else if (!r) offeneAvoid.push(scrubText(m, entries));
+        else if (!r) offeneAvoid.push(m);
       }
     }
     const attrs: Record<string, string | number | null> = {};

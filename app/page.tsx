@@ -220,6 +220,17 @@ export default function Home() {
   const setCluster = (i: number, patch: Partial<Config["clusters"][number]>) =>
     config && setConfig({ ...config, clusters: config.clusters.map((c, k) => (k === i ? { ...c, ...patch } : c)) });
 
+  // Manuelle Zuordnung einer offenen Nennung zu einem Kind (oder Zurücksetzen).
+  function resolveMention(mention: string, code: string) {
+    const key = norm(mention);
+    const next = { ...corrections };
+    if (code) next[key] = code;
+    else delete next[key];
+    setCorrections(next);
+    reanon(columns, next);
+    setAssignment(null);
+  }
+
   function solve() {
     if (!students.length || !config) return;
     setSolving(true);
@@ -303,6 +314,13 @@ export default function Home() {
   const criteriaSorted = useMemo(
     () => (config ? [...config.criteria].sort((a, b) => b.weight - a.weight) : []),
     [config]
+  );
+  const childOptions = useMemo(
+    () =>
+      Object.entries(identityMap)
+        .map(([code, id]) => ({ code, name: id.full.trim() || code }))
+        .sort((a, b) => a.name.localeCompare(b.name, "de")),
+    [identityMap]
   );
   const totalWishers = useMemo(() => students.filter((s) => s.wishes.length).length, [students]);
   const wishedCount = useMemo(() => students.reduce((a, s) => a + s.wishesRaw.length, 0), [students]);
@@ -627,15 +645,37 @@ export default function Home() {
               </div>
             </div>
             <div className="card-body">
-              {cases.slice(0, 40).map((c, i) => (
+              <p className="note" style={{ marginBottom: "0.6rem" }}>
+                Bei offenen Wünschen oder „nicht mit“ kannst du das gemeinte Kind selbst aus der Liste
+                wählen, falls die KI es nicht erkannt hat. Danach neu berechnen.
+              </p>
+              {cases.slice(0, 60).map((c, i) => (
                 <div key={i} className="case">
                   <span className="kind">
                     {c.kind === "note" ? "Bemerkung" : c.kind === "openWish" ? "Offener Wunsch" : c.kind === "openAvoid" ? "Offenes „nicht mit“" : "Fehlende Daten"}
                   </span>{" "}
                   <strong>{nameOf(c.code)}</strong>: {deanonText(c.text)}
+                  {c.mention && (
+                    <div className="case-resolve">
+                      <span>
+                        {c.field === "avoid" ? "🚫 „nicht mit“" : "🤝 Wunschpartner"} „{c.mention}“ ist:
+                      </span>
+                      <select
+                        value={corrections[norm(c.mention)] ?? ""}
+                        onChange={(e) => resolveMention(c.mention!, e.target.value)}
+                      >
+                        <option value="">— Kind wählen —</option>
+                        {childOptions
+                          .filter((o) => o.code !== c.code)
+                          .map((o) => (
+                            <option key={o.code} value={o.code}>{o.name}</option>
+                          ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               ))}
-              {cases.length > 40 && <p className="note">… und {cases.length - 40} weitere.</p>}
+              {cases.length > 60 && <p className="note">… und {cases.length - 60} weitere.</p>}
               <div className="row" style={{ marginTop: "0.75rem" }}>
                 <button onClick={askDecisions} disabled={aiLoading}>
                   {aiLoading ? <><span className="spin" />KI analysiert …</> : "🤖 KI-Empfehlungen einholen"}
