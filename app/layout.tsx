@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Klasseneinteilung Jgst. 5",
+  title: "Klasseneinteilung",
   description:
-    "Klasseneinteilung mit anonymisierter Verarbeitung: Excel hochladen, Kriterien gewichten, fertige Einteilung exportieren.",
+    "Klassen fair einteilen: Excel hochladen, Namen per KI abgleichen, Kriterien gewichten, fertige Einteilung exportieren — komplett anonymisiert.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

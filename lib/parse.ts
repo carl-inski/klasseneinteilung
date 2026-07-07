@@ -1,112 +1,144 @@
-// Liest die hochgeladene Excel-Datei (SheetJS) und mappt die Spalten des
-// Blatts "Klasseneinteilung" (bzw. des ersten Blatts mit passenden Headern)
-// auf RawRow. Läuft ausschließlich im Browser — die Datei verlässt ihn nie.
+// Liest die Excel-Datei (SheetJS) und erkennt Spalten + Rollen automatisch.
+// Läuft ausschließlich im Browser — die Datei verlässt ihn nie.
+// Die Rollen-Zuordnung ist ein Vorschlag; der Nutzer kann sie im UI anpassen.
 
 import * as XLSX from "xlsx";
-import type { RawRow } from "./anonymize";
+import type { Column, Role } from "./types";
 
-const HEADER_ALIASES: Record<keyof RawRow, string[]> = {
-  nachname: ["nachname", "name"],
-  rufname: ["rufname"],
-  vornamen: ["vornamen", "vorname"],
-  email: ["email", "e-mail", "mail"],
-  deutsch: ["deutsch", "d"],
-  mathe: ["mathe", "mathematik", "m"],
-  hsu: ["hsu", "sachunterricht"],
-  schnitt: ["durschnitt", "durchschnitt", "schnitt", "notenschnitt"],
-  geschlecht: ["geschlecht", "m/w"],
-  fremdsprache: ["2. fremdsprache", "2.fremdsprache", "fremdsprache", "2. fs", "2.fs"],
-  grundschule: ["grundschule", "herkunftsschule", "schule"],
-  chor: ["chorklasse", "chor"],
-  wunsch1: ["wunschpartner"],
-  wunsch2: ["weitere wunschpartner", "weitere wunschpartner/in", "wunschpartner 2"],
-  nichtMit: ["nicht mit", "nichtmit", "sonderwunsch"],
-  bemerkung: ["bemerkung", "bemerkungen", "kommentar"],
-};
-
-function findColumns(header: unknown[]): Partial<Record<keyof RawRow, number>> {
-  const map: Partial<Record<keyof RawRow, number>> = {};
-  header.forEach((cell, i) => {
-    if (typeof cell !== "string") return;
-    const h = cell.trim().toLowerCase();
-    for (const [field, aliases] of Object.entries(HEADER_ALIASES) as [keyof RawRow, string[]][]) {
-      if (map[field] === undefined && aliases.includes(h)) map[field] = i;
-    }
-  });
-  return map;
+export interface Table {
+  headers: string[];
+  rows: (string | number | null)[][];
 }
 
 export interface ParseResult {
-  rows: RawRow[];
+  table: Table;
+  columns: Column[];
   sheetName: string;
   warnings: string[];
+}
+
+// Schlüsselwörter (kleingeschrieben) -> Rolle. Erste Übereinstimmung gewinnt.
+const ROLE_KEYWORDS: [Role, string[]][] = [
+  // Vorname VOR Nachname prüfen (sonst matcht "rufname" auf das generische "name")
+  ["firstName", ["rufname", "vorname", "vornamen", "first name", "given name"]],
+  ["lastName", ["nachname", "familienname", "surname", "last name"]],
+  ["fullName", ["name des kindes", "schüler", "schuelerin", "kind", "full name", "name"]],
+  ["email", ["email", "e-mail", "mail"]],
+  ["wish", ["wunschpartner", "wunsch", "freund", "partner", "möchte mit"]],
+  ["avoid", ["nicht mit", "nichtmit", "sonderwunsch", "getrennt", "avoid"]],
+  ["cluster", ["chorklasse", "chor", "profil", "zweig", "bläser", "sport", "musik"]],
+  ["concentrate", ["2. fremdsprache", "2.fremdsprache", "fremdsprache", "2. fs", "2.fs", "sprache", "latein"]],
+  ["spread", ["durchschnitt", "durschnitt", "schnitt", "notendurchschnitt", "note", "gpa"]],
+  ["balance", ["geschlecht", "m/w", "gender", "sex"]],
+  ["mix", ["grundschule", "herkunftsschule", "herkunft", "schule", "vorschule", "kita"]],
+  ["note", ["bemerkung", "bemerkungen", "kommentar", "notiz", "anmerkung"]],
+  ["ignore", ["anzahl", "nr", "nr.", "lfd", "#", "id"]],
+];
+
+const SUBJECT_GRADES = ["deutsch", "mathe", "mathematik", "hsu", "sachunterricht", "englisch"];
+
+function detectRole(header: string, sampleValues: (string | number | null)[]): { role: Role; targetValue?: string } {
+  const h = header.trim().toLowerCase();
+  // Einzelfach-Noten ignorieren, wenn ein Durchschnitt existiert (wird separat behandelt)
+  if (SUBJECT_GRADES.includes(h)) return { role: "ignore" };
+  for (const [role, kws] of ROLE_KEYWORDS) {
+    if (kws.some((kw) => h === kw || h.includes(kw))) {
+      if (role === "cluster") return { role, targetValue: guessClusterValue(sampleValues) };
+      if (role === "concentrate") return { role, targetValue: guessMinority(sampleValues) };
+      return { role };
+    }
+  }
+  // Heuristik für unbekannte Spalten
+  const nonEmpty = sampleValues.filter((v) => v != null && String(v).trim() !== "");
+  if (!nonEmpty.length) return { role: "ignore" };
+  const numeric = nonEmpty.filter((v) => typeof v === "number" || !isNaN(Number(v)));
+  if (numeric.length / nonEmpty.length > 0.8) return { role: "spread" };
+  const distinct = new Set(nonEmpty.map((v) => String(v).trim().toLowerCase()));
+  if (distinct.size <= 5 && nonEmpty.length > distinct.size) return { role: "balance" };
+  return { role: "ignore" };
+}
+
+function guessClusterValue(values: (string | number | null)[]): string {
+  const counts = new Map<string, number>();
+  for (const v of values) {
+    if (v == null) continue;
+    const s = String(v).trim().toLowerCase();
+    if (s) counts.set(s, (counts.get(s) ?? 0) + 1);
+  }
+  // Bevorzugt "ja"; sonst der seltenere (= der besondere) Wert
+  if (counts.has("ja")) return "ja";
+  const sorted = [...counts.entries()].sort((a, b) => a[1] - b[1]);
+  return sorted[0]?.[0] ?? "ja";
+}
+
+function guessMinority(values: (string | number | null)[]): string {
+  const counts = new Map<string, number>();
+  for (const v of values) {
+    if (v == null) continue;
+    const s = String(v).trim();
+    if (s) counts.set(s, (counts.get(s) ?? 0) + 1);
+  }
+  const sorted = [...counts.entries()].sort((a, b) => a[1] - b[1]);
+  return sorted[0]?.[0] ?? "";
 }
 
 export function parseWorkbook(data: ArrayBuffer): ParseResult {
   const wb = XLSX.read(data, { type: "array" });
   const warnings: string[] = [];
 
-  // Blatt mit den meisten erkannten Spalten wählen (bevorzugt "Klasseneinteilung")
-  let bestSheet = "";
-  let bestCols: Partial<Record<keyof RawRow, number>> = {};
-  let bestGrid: unknown[][] = [];
+  // Blatt mit den meisten sinnvoll erkennbaren Spalten wählen
+  let best: { name: string; grid: (string | number | null)[][] } | null = null;
+  let bestScore = -1;
   for (const name of wb.SheetNames) {
-    const grid: unknown[][] = XLSX.utils.sheet_to_json(wb.Sheets[name], {
+    const grid = XLSX.utils.sheet_to_json<(string | number | null)[]>(wb.Sheets[name], {
       header: 1,
       defval: null,
+      blankrows: false,
     });
     if (!grid.length) continue;
-    const cols = findColumns(grid[0]);
+    const headerRow = (grid[0] ?? []).filter((c) => typeof c === "string" && c.trim());
     const score =
-      Object.keys(cols).length + (name.toLowerCase().includes("klasseneinteilung") ? 3 : 0);
-    if (score > Object.keys(bestCols).length + (bestSheet.toLowerCase().includes("klasseneinteilung") ? 3 : 0) || !bestSheet) {
-      bestSheet = name;
-      bestCols = cols;
-      bestGrid = grid;
+      headerRow.length + (name.toLowerCase().includes("klasseneinteilung") ? 5 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = { name, grid };
     }
   }
+  if (!best) throw new Error("Die Datei enthält keine lesbare Tabelle.");
 
-  if (bestCols.nachname === undefined || bestCols.rufname === undefined) {
-    throw new Error(
-      "Keine passende Tabelle gefunden. Erwartet wird ein Blatt mit Spalten wie „Nachname“, „Rufname“, „Geschlecht“, „Wunschpartner“ …"
+  const headers = (best.grid[0] ?? []).map((c) => (c == null ? "" : String(c).trim()));
+  const dataRows = best.grid.slice(1).filter((r) => r.some((c) => c != null && String(c).trim() !== ""));
+
+  // Spalten mit Rollen erkennen
+  const columns: Column[] = headers.map((header, i) => {
+    if (!header) return { header: `Spalte ${i + 1}`, role: "ignore" as Role };
+    const sample = dataRows.slice(0, 60).map((r) => r[i] ?? null);
+    const { role, targetValue } = detectRole(header, sample);
+    return { header, role, targetValue };
+  });
+
+  const hasName = columns.some((c) => c.role === "lastName" || c.role === "fullName");
+  const hasFirst = columns.some((c) => c.role === "firstName");
+  if (!hasName) {
+    // Fallback: erste Textspalte als Name
+    const firstText = columns.findIndex(
+      (c, i) => c.role === "ignore" && dataRows.some((r) => typeof r[i] === "string")
     );
+    if (firstText >= 0) {
+      columns[firstText].role = "fullName";
+      warnings.push(`Keine eindeutige Namensspalte erkannt — „${columns[firstText].header}“ wird als Name verwendet.`);
+    } else {
+      throw new Error("Keine Namensspalte gefunden.");
+    }
   }
-  for (const field of ["geschlecht", "wunsch1", "grundschule"] as const) {
-    if (bestCols[field] === undefined) warnings.push(`Spalte „${HEADER_ALIASES[field][0]}“ nicht gefunden.`);
+  if (!hasFirst && !columns.some((c) => c.role === "fullName")) {
+    warnings.push("Keine getrennte Vorname-Spalte erkannt.");
   }
 
-  const cell = (row: unknown[], f: keyof RawRow): unknown =>
-    bestCols[f] !== undefined ? row[bestCols[f]!] : null;
-  const str = (row: unknown[], f: keyof RawRow): string => {
-    const v = cell(row, f);
-    return v == null ? "" : String(v).trim();
+  return {
+    table: { headers, rows: dataRows },
+    columns,
+    sheetName: best.name,
+    warnings,
   };
-  const num = (row: unknown[], f: keyof RawRow): number | null => {
-    const v = cell(row, f);
-    return typeof v === "number" ? v : null;
-  };
-
-  const rows: RawRow[] = [];
-  for (const row of bestGrid.slice(1)) {
-    if (!str(row, "nachname") && !str(row, "rufname")) continue;
-    rows.push({
-      nachname: str(row, "nachname"),
-      rufname: str(row, "rufname"),
-      vornamen: str(row, "vornamen"),
-      email: str(row, "email"),
-      deutsch: num(row, "deutsch"),
-      mathe: num(row, "mathe"),
-      hsu: num(row, "hsu"),
-      schnitt: num(row, "schnitt"),
-      geschlecht: str(row, "geschlecht") || null,
-      fremdsprache: str(row, "fremdsprache") || null,
-      grundschule: str(row, "grundschule") || null,
-      chor: str(row, "chor") || null,
-      wunsch1: str(row, "wunsch1") || null,
-      wunsch2: str(row, "wunsch2") || null,
-      nichtMit: str(row, "nichtMit") || null,
-      bemerkung: str(row, "bemerkung") || null,
-    });
-  }
-  return { rows, sheetName: bestSheet, warnings };
 }

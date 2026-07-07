@@ -12,41 +12,60 @@ Kriterien priorisieren, fertige Einteilung als Excel exportieren.
 - Der Schlüssel (Code → Name) bleibt im Browser-Speicher und kann als JSON
   heruntergeladen werden; De-Anonymisierung passiert nur lokal (Anzeige & Excel-Export).
 
-## Kriterien (aus dem Ablaufzettel „Klassenbildung“)
+## Generisches Spalten-/Rollen-Modell
 
-1. Sonderwünsche „nicht mit …“ (hart)
-2. Wunschpartner erfüllen (mind. einer pro Kind)
-3. Keine Wunschketten — Gruppen max. 4
-4. Gleichmäßige Verteilung m/w
-5. Grundschulen mischen, keine Blöcke > 8
-6. Möglichst wenige Klassen mit Latein (2. Fremdsprache)
-7. Übertrittsnoten heterogen
-8. Nachbarkinder (kleine Grundschulgruppen) beisammen lassen
+Statt fest verdrahteter Spalten wird jede Spalte einer **Rolle** zugeordnet
+(automatisch erkannt, im UI änderbar) — dadurch funktioniert das Tool mit
+beliebigen Klassenlisten, nicht nur der 5. Jahrgangsstufe:
 
-Reihenfolge und Gewichte sind in der Web-Oberfläche anpassbar; zusätzlich:
-Klassenanzahl, max. Grundschulblock, max. Wunschgruppengröße, Chorklasse bündeln.
+| Rolle | Bedeutung | Beispiel |
+|---|---|---|
+| `firstName`/`lastName`/`fullName` | Name (bleibt lokal) | Rufname, Nachname |
+| `wish` / `avoid` | Wunschpartner / „nicht mit“ | Wunschpartner |
+| `balance` | Kategorie gleich verteilen | Geschlecht |
+| `concentrate` | Kategorie-Wert auf wenige Klassen bündeln | 2. Fremdsprache = Latein |
+| `spread` | Zahl heterogen verteilen | Notenschnitt |
+| `mix` | Herkunft mischen (Blöcke ≤ 8, kleine Gruppen zusammen) | Grundschule |
+| `cluster` | **harte** Cluster-Klasse | Chorklasse = ja |
+| `note` | Freitext-Bemerkung | Bemerkung |
 
-## Entscheidungsfälle & KI
+## Harte vs. weiche Kriterien
 
-Fälle, die Programmlogik nicht lösen kann (Bemerkungen wie „mit Zwillingsschwester in
-eine Klasse“, nicht zuordenbare Wunschnennungen, fehlende Daten), werden aufgelistet.
-Optional analysiert Claude (`/api/ai-decide`, Anthropic API) die anonymisierten Fälle
-und schlägt Regeln vor (zusammen / getrennt / manuell prüfen), die per Klick übernommen
-und neu berechnet werden.
+**Harte Regeln** (strukturell erzwungen, überstimmen alle Wünsche):
+- genau *K* Klassen (fest, z. B. 5)
+- Klassengröße ausgeglichen (±1)
+- **Cluster** (z. B. Chor): *alle* Kinder mit dem Cluster-Wert kommen in dedizierte
+  Cluster-Klasse(n); ihre eigenen Wünsche werden dabei ignoriert, danach wird bis zur
+  Klassengröße mit Nicht-Cluster-Kindern aufgefüllt.
+- „nicht mit …“ (optional als hart schaltbar)
 
-API-Key: entweder `ANTHROPIC_API_KEY` als Umgebungsvariable (z. B. in Vercel) setzen
-oder im UI-Feld eintragen (wird nur für die eine Anfrage verwendet, nicht gespeichert).
+**Weiche Kriterien** (gewichtete Straffunktion, im UI priorisierbar): Wünsche erfüllen,
+Geschlecht gleich verteilen, Grundschulen mischen, Fremdsprache bündeln, Noten heterogen.
+
+## KI-Schritte
+
+1. **Namensabgleich** (`/api/ai-names`): Eltern schreiben Wunschpartner oft falsch. Die KI
+   gleicht alle Nennungen gegen die echte Namensliste ab und korrigiert sie, damit der
+   Algorithmus die Wünsche richtig zuordnet. Übertragen wird **nur die Namensliste**
+   (keine Noten/Geschlecht/Bemerkungen).
+2. **Entscheidungsfälle** (`/api/ai-decide`): Bemerkungen, nicht zuordenbare Nennungen und
+   fehlende Daten werden — anonymisiert (Codes) — analysiert; die KI schlägt Regeln vor
+   (zusammen / getrennt / manuell), die per Klick übernommen werden.
+
+Beide nutzen Claude (Anthropic API, `claude-opus-4-8`). API-Key: `ANTHROPIC_API_KEY` in
+Vercel setzen oder im UI-Feld eintragen (nur pro Anfrage, nicht gespeichert).
 
 ## Solver
 
 Heuristik in TypeScript (läuft im Browser):
 
-1. Wunschgruppen per größenbeschränkter Union-Find (gegenseitige Wünsche zuerst,
-   Kettenbegrenzung, „nicht mit“-konfliktfrei).
-2. Greedy-Startverteilung der Gruppen.
-3. Lokale Suche (~40.000 Iterationen, Verschieben/Tauschen/gezielte
-   Latein-Konsolidierung) minimiert die gewichtete Straffunktion.
-4. Mehrere Starts, bestes Ergebnis gewinnt; „Alternative Lösung“ nutzt neuen Seed.
+1. **Cluster-Vorplatzierung** (hart): Cluster-Kinder werden auf die dedizierten
+   Cluster-Klassen verteilt und fixiert.
+2. **Wunschgruppen** (nur Nicht-Cluster) per größenbeschränkter Union-Find
+   (gegenseitige Wünsche zuerst, max. 4, „nicht mit“-konfliktfrei).
+3. **Greedy-Start** + **lokale Suche** (~50.000 Iterationen) minimiert die gewichtete
+   Straffunktion; die Klassengröße ist eine harte Obergrenze bei jedem Zug.
+4. Mehrere Starts, Lösung ohne harte Verletzung gewinnt.
 
 Test mit echter Datei (Datei bleibt lokal): `npm test -- pfad/zur/datei.xlsx`
 
